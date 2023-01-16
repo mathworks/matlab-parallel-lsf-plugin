@@ -13,10 +13,7 @@ if ~isa(cluster, 'parallel.Cluster')
     error('parallelexamples:GenericLSF:SubmitFcnError', ...
         'The function %s is for use with clusters created using the parcluster command.', currFilename)
 end
-if cluster.HasSharedFilesystem
-    error('parallelexamples:GenericLSF:NotNonSharedFileSystem', ...
-        'The function %s is for use with nonshared filesystems.', currFilename)
-end
+
 % Get the information about the actual cluster used
 data = cluster.getJobClusterData(job);
 if isempty(data)
@@ -25,7 +22,6 @@ if isempty(data)
     OK = true;
     return
 end
-remoteConnection = getRemoteConnection(cluster);
 
 % Get a simplified list of schedulerIDs to reduce the number of calls to
 % the scheduler.
@@ -37,8 +33,7 @@ for ii = 1:length(schedulerIDs)
     commandToRun = sprintf('bkill "%s"', schedulerID);
     dctSchedulerMessage(4, '%s: Canceling job on cluster using command:\n\t%s.', currFilename, commandToRun);
     try
-        % Execute the command on the remote host.
-        [cmdFailed, cmdOut] = remoteConnection.runCommand(commandToRun);
+        [cmdFailed, cmdOut] = runSchedulerCommand(cluster, commandToRun);
     catch err
         cmdFailed = true;
         cmdOut = err.message;
@@ -56,17 +51,21 @@ for ii = 1:length(schedulerIDs)
     end
 end
 
-% Only stop mirroring if we are actually mirroring
-if remoteConnection.isJobUsingConnection(job.ID)
-    dctSchedulerMessage(5, '%s: Stopping the mirror for job %d.', currFilename, job.ID);
-    try
-        remoteConnection.stopMirrorForJob(job);
-    catch err
-        warning('parallelexamples:GenericLSF:FailedToStopMirrorForJob', ...
-            'Failed to stop the file mirroring for job %d.\nReason: %s', ...
-            job.ID, err.getReport);
+if ~cluster.HasSharedFilesystem
+    % Only stop mirroring if we are actually mirroring
+    remoteConnection = getRemoteConnection(cluster);
+    if remoteConnection.isJobUsingConnection(job.ID)
+        dctSchedulerMessage(5, '%s: Stopping the mirror for job %d.', currFilename, job.ID);
+        try
+            remoteConnection.stopMirrorForJob(job);
+        catch err
+            warning('parallelexamples:GenericLSF:FailedToStopMirrorForJob', ...
+                'Failed to stop the file mirroring for job %d.\nReason: %s', ...
+                job.ID, err.getReport);
+        end
     end
 end
+
 % Now warn about those jobs that we failed to cancel.
 erroredJobAndCauseStrings = erroredJobAndCauseStrings(~cellfun(@isempty, erroredJobAndCauseStrings));
 if ~isempty(erroredJobAndCauseStrings)
