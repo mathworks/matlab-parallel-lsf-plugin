@@ -1,6 +1,6 @@
 # Parallel Computing Toolbox plugin for MATLAB Parallel Server with LSF
 
-[![View on File Exchange](https://www.mathworks.com/matlabcentral/images/matlab-file-exchange.svg)](https://www.mathworks.com/matlabcentral/fileexchange/52817)
+[![View Parallel Computing Toolbox Plugin for LSF on File Exchange](https://www.mathworks.com/matlabcentral/images/matlab-file-exchange.svg)](https://mathworks.com/matlabcentral/fileexchange/127374-parallel-computing-toolbox-plugin-for-lsf)
 
 Parallel Computing Toolbox&trade; provides the `Generic` cluster type for submitting MATLAB&reg; jobs to a cluster running a third-party scheduler.
 The `Generic` cluster type uses a set of plugin scripts to define how your machine communicates with your scheduler.
@@ -27,6 +27,16 @@ Alternatively, to clone this repository to your computer with Git software insta
 git clone https://github.com/mathworks/matlab-parallel-lsf-plugin
 ```
 You can execute a system command from the MATLAB command prompt by adding `!` before the command.
+
+### Cluster Discovery
+
+Since version R2023a, MATLAB can discover clusters running third-party schedulers such as LSF.
+As a cluster admin, you can create a configuration file that describes how to configure the Parallel Computing Toolbox on the user's machine to submit MATLAB jobs to the cluster.
+The cluster configuration file is a plain text file with the extension `.conf` containing key-value pairs that describe the cluster configuration information.
+The MATLAB client will use the cluster configuration file to create a cluster profile for the user who discovers the cluster.
+Therefore, users will not need to follow the instructions in the sections below.
+You can find an example of a cluster configuration file in [discover/example.conf](discover/example.conf).
+For full details on how to make a cluster running a third-party scheduler discoverable, see the documentation for [Configure for Third-Party Scheduler Cluster Discovery](https://mathworks.com/help/matlab-parallel-server/configure-for-cluster-discovery.html).
 
 ### Create a Cluster Profile in MATLAB
 
@@ -219,4 +229,4 @@ The license is available in the [license.txt](license.txt) file in this reposito
 
 If you require assistance or have a request for additional features or capabilities, please contact [MathWorks Technical Support](https://www.mathworks.com/support/contact_us.html).
 
-Copyright 2022 The MathWorks, Inc.
+Copyright 2022-2023 The MathWorks, Inc.
