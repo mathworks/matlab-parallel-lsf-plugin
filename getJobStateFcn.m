@@ -44,7 +44,7 @@ end
 
 [schedulerIDs, numSubmittedTasks] = getSimplifiedSchedulerIDsForJob(job);
 
-commandToRun = sprintf('bjobs %s', sprintf('%s ', schedulerIDs{:}));
+commandToRun = sprintf('bjobs -noheader %s', sprintf('%s ', schedulerIDs{:}));
 dctSchedulerMessage(4, '%s: Querying cluster for job state using command:\n\t%s', currFilename, commandToRun);
 
 try
