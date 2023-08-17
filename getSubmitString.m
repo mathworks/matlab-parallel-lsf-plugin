@@ -13,6 +13,12 @@ if ~isempty(jobArrayString)
     jobName = strcat(jobName, '[', jobArrayString, ']');
 end
 
+% If the command contains spaces, LSF requires extra escaped double-quotes
+% outside the quoted command
+if contains(quotedCommand, ' ')
+    quotedCommand = ['\"' quotedCommand '\"'];
+end
+
 submitString = sprintf('bsub -J %s -o %s -env "none" %s %s', ...
     jobName, quotedLogFile, additionalSubmitArgs, quotedCommand);
 
