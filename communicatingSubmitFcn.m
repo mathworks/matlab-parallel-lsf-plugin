@@ -22,9 +22,13 @@ clusterOS = cluster.OperatingSystem;
 if strcmpi(clusterOS, 'unix')
     quote = '''';
     fileSeparator = '/';
+    scriptExt = '.sh';
+    shellCmd = 'sh';
 else
     quote = '"';
     fileSeparator = '\';
+    scriptExt = '.bat';
+    shellCmd = 'cmd /c';
 end
 
 if isprop(cluster.AdditionalProperties, 'ClusterHost')
@@ -123,7 +127,7 @@ logFile = sprintf('%s%s%s', jobDirectoryOnCluster, fileSeparator, sprintf('Job%d
 quotedLogFile = sprintf('%s%s%s', quote, logFile, quote);
 dctSchedulerMessage(5, '%s: Using %s as log file', currFilename, quotedLogFile);
 
-jobName = sprintf('Job%d', job.ID);
+jobName = sprintf('MATLAB_R%s_Job%d', version('-release'), job.ID);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% CUSTOMIZATION MAY BE REQUIRED %%
@@ -142,38 +146,33 @@ dctSchedulerMessage(4, '%s: Requesting %d tasks, each with %d cores.', ...
     currFilename, environmentProperties.NumberOfTasks, cluster.NumThreads);
 commonSubmitArgs = getCommonSubmitArgs(cluster);
 additionalSubmitArgs = strtrim(sprintf('%s %s', additionalSubmitArgs, commonSubmitArgs));
-
-% Extension to use for scripts
-if strcmpi(clusterOS, 'unix')
-    scriptExt = '.sh';
-else
-    scriptExt = '.bat';
+if validatedPropValue(cluster.AdditionalProperties, 'DisplaySubmitArgs', 'logical', false)
+    fprintf('Submit arguments: %s\n', additionalSubmitArgs);
 end
 
 % Path to the submit script, to submit the LSF job using bsub
-localSubmitScriptPath = [tempname(localJobDirectory) scriptExt];
-[~, submitScriptName, submitScriptExt] = fileparts(localSubmitScriptPath);
-submitScriptPathOnCluster = sprintf('%s%s%s%s', jobDirectoryOnCluster, fileSeparator, submitScriptName, submitScriptExt);
+submitScriptName = sprintf('submitScript%s', scriptExt);
+localSubmitScriptPath = sprintf('%s%s%s', localJobDirectory, fileSeparator, submitScriptName);
+submitScriptPathOnCluster = sprintf('%s%s%s', jobDirectoryOnCluster, fileSeparator, submitScriptName);
 quotedSubmitScriptPathOnCluster = sprintf('%s%s%s', quote, submitScriptPathOnCluster, quote);
 
 % Path to the environment wrapper, which will set the environment variables
 % for the job then execute the job wrapper
-localEnvScriptPath = [tempname(localJobDirectory) scriptExt];
-[~, envScriptName, envScriptExt] = fileparts(localEnvScriptPath);
-envScriptPathOnCluster = sprintf('%s%s%s%s', jobDirectoryOnCluster, fileSeparator, envScriptName, envScriptExt);
+envScriptName = sprintf('environmentWrapper%s', scriptExt);
+localEnvScriptPath = sprintf('%s%s%s', localJobDirectory, fileSeparator, envScriptName);
+envScriptPathOnCluster = sprintf('%s%s%s', jobDirectoryOnCluster, fileSeparator, envScriptName);
 quotedEnvScriptPathOnCluster = sprintf('%s%s%s', quote, envScriptPathOnCluster, quote);
 
+% Create the scripts to submit a LSF job.
+% These will be created in the job directory.
+dctSchedulerMessage(5, '%s: Generating scripts for job %d', currFilename, job.ID);
 createEnvironmentWrapper(localEnvScriptPath, quotedWrapperPath, ...
     variables, clusterOS);
 createSubmitScript(localSubmitScriptPath, jobName, quotedLogFile, ...
     quotedEnvScriptPathOnCluster, additionalSubmitArgs, clusterOS);
 
 % Create the command to run on the cluster
-if strcmpi(clusterOS, 'unix')
-    commandToRun = sprintf('sh %s', quotedSubmitScriptPathOnCluster);
-else
-    commandToRun = sprintf('cmd /c %s', quotedSubmitScriptPathOnCluster);
-end
+commandToRun = sprintf('%s %s', shellCmd, quotedSubmitScriptPathOnCluster);
 
 if ~cluster.HasSharedFilesystem
     % Start the mirror to copy all the job files over to the cluster
@@ -246,7 +245,7 @@ end
 if verLessThan('matlab', '9.7') % schedulerID stored in job data
     jobData.ClusterJobIDs = jobIDs;
 else % schedulerID on task since 19b
-    if numel(job.Tasks) == 1
+    if isscalar(job.Tasks)
         schedulerIDs = jobIDs{1};
     else
         schedulerIDs = repmat(jobIDs, size(job.Tasks));

@@ -22,9 +22,13 @@ clusterOS = cluster.OperatingSystem;
 if strcmpi(clusterOS, 'unix')
     quote = '''';
     fileSeparator = '/';
+    scriptExt = '.sh';
+    shellCmd = 'sh';
 else
     quote = '"';
     fileSeparator = '\';
+    scriptExt = '.bat';
+    shellCmd = 'cmd /c';
 end
 
 if isprop(cluster.AdditionalProperties, 'ClusterHost')
@@ -121,9 +125,18 @@ quotedWrapperPath = sprintf('%s%s%s', quote, wrapperPath, quote);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% CUSTOMIZATION MAY BE REQUIRED %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-additionalSubmitArgs = '';
+if strcmpi(clusterOS, 'unix')
+    % Setting affinity not supported on Windows
+    additionalSubmitArgs = sprintf('-R "affinity[core(%d)]"', ...
+        cluster.NumThreads);
+else
+    additionalSubmitArgs = '';
+end
 commonSubmitArgs = getCommonSubmitArgs(cluster);
 additionalSubmitArgs = strtrim(sprintf('%s %s', additionalSubmitArgs, commonSubmitArgs));
+if validatedPropValue(cluster.AdditionalProperties, 'DisplaySubmitArgs', 'logical', false)
+    fprintf('Submit arguments: %s\n', additionalSubmitArgs);
+end
 
 % Only keep and submit tasks that are not cancelled. Cancelled tasks
 % will have errors.
@@ -148,7 +161,7 @@ if useJobArrays
     % 1000, then indices [1001-2000] would be valid.
     taskIDGroupsForJobArrays = iCalculateTaskIDGroupsForJobArrays(taskIDs, maxJobArraySize);
     
-    jobName = sprintf('Job%d',job.ID);
+    jobName = sprintf('MATLAB_R%s_Job%d', version('-release'), job.ID);
     numJobArrays = numel(taskIDGroupsForJobArrays);
     commandsToRun = cell(numJobArrays, 1);
     jobIDs = cell(numJobArrays, 1);
@@ -159,27 +172,49 @@ if useJobArrays
         % Create a character vector with the ranges of IDs to submit.
         jobArrayString = iCreateJobArrayString(schedulerJobArrayIndices{ii});
         
-        logFileName = 'Task%I.log';
-        % Choose a file for the output. Please note that currently,
-        % JobStorageLocation refers to a directory on disk, but this may
-        % change in the future.
+        % Choose a file for the output
+        if strcmpi(clusterOS, 'unix')
+            logFileName = 'Task%I.log';
+        else
+            % Must escape percent sign in Windows bat script
+            logFileName = 'Task%%I.log';
+        end
         logFile = sprintf('%s%s%s', jobDirectoryOnCluster, fileSeparator, logFileName);
         quotedLogFile = sprintf('%s%s%s', quote, logFile, quote);
         dctSchedulerMessage(5, '%s: Using %s as log file', currFilename, quotedLogFile);
         
         environmentVariables = variables;
-        % Create a script to submit a LSF job - this
-        % will be created in the job directory
-        dctSchedulerMessage(5, '%s: Generating script for job array %i', currFilename, ii);
-        commandsToRun{ii} = iGetCommandToRun(localJobDirectory, ...
-            jobDirectoryOnCluster, fileSeparator, quote, jobName, quotedLogFile, ...
-            quotedWrapperPath, environmentVariables, clusterOS, additionalSubmitArgs, jobArrayString);
+        
+        % Path to the submit script, to submit the LSF job using bsub
+        submitScriptName = sprintf('submitScript%d%s', ii, scriptExt);
+        localSubmitScriptPath = sprintf('%s%s%s', localJobDirectory, fileSeparator, submitScriptName);
+        submitScriptPathOnCluster = sprintf('%s%s%s', jobDirectoryOnCluster, fileSeparator, submitScriptName);
+        quotedSubmitScriptPathOnCluster = sprintf('%s%s%s', quote, submitScriptPathOnCluster, quote);
+        
+        % Path to the environment wrapper, which will set the environment variables
+        % for the job then execute the job wrapper
+        envScriptName = sprintf('environmentWrapper%d%s', ii, scriptExt);
+        localEnvScriptPath = sprintf('%s%s%s', localJobDirectory, fileSeparator, envScriptName);
+        envScriptPathOnCluster = sprintf('%s%s%s', jobDirectoryOnCluster, fileSeparator, envScriptName);
+        quotedEnvScriptPathOnCluster = sprintf('%s%s%s', quote, envScriptPathOnCluster, quote);
+        
+        % Create the scripts to submit a LSF job.
+        % These will be created in the job directory.
+        dctSchedulerMessage(5, '%s: Generating scripts for job array %d', currFilename, ii);
+        createEnvironmentWrapper(localEnvScriptPath, quotedWrapperPath, ...
+            environmentVariables, clusterOS);
+        createSubmitScript(localSubmitScriptPath, jobName, quotedLogFile, ...
+            quotedEnvScriptPathOnCluster, additionalSubmitArgs, clusterOS, jobArrayString);
+        
+        % Create the command to run on the cluster
+        commandsToRun{ii} = sprintf('%s %s', shellCmd, quotedSubmitScriptPathOnCluster);
     end
 else
     % Do not use job arrays and submit each task individually.
     taskLocations = environmentProperties.TaskLocations(isPendingTask);
     jobIDs = cell(1, numberOfTasks);
     commandsToRun = cell(numberOfTasks, 1);
+    
     % Loop over every task we have been asked to submit
     for ii = 1:numberOfTasks
         taskLocation = taskLocations{ii};
@@ -193,19 +228,37 @@ else
         end
         
         % Choose a file for the output
-        logFile = sprintf('%s%s%s', jobDirectoryOnCluster, fileSeparator, sprintf('Task%d.log', taskIDs(ii)));
+        logFileName = sprintf('Task%d.log', taskIDs(ii));
+        logFile = sprintf('%s%s%s', jobDirectoryOnCluster, fileSeparator, logFileName);
         quotedLogFile = sprintf('%s%s%s', quote, logFile, quote);
         dctSchedulerMessage(5, '%s: Using %s as log file', currFilename, quotedLogFile);
         
         % Submit one task at a time
-        jobName = sprintf('Job%d.%d', job.ID, taskIDs(ii));
+        jobName = sprintf('MATLAB_R%s_Job%d.%d', version('-release'), job.ID, taskIDs(ii));
         
-        % Create a script to submit a LSF job - this will be created in
-        % the job directory
-        dctSchedulerMessage(5, '%s: Generating script for task %i', currFilename, ii);
-        commandsToRun{ii} = iGetCommandToRun(localJobDirectory, ...
-            jobDirectoryOnCluster, fileSeparator, quote, jobName, quotedLogFile, ...
-            quotedWrapperPath, environmentVariables, clusterOS, additionalSubmitArgs);
+        % Path to the submit script, to submit the LSF job using bsub
+        submitScriptName = sprintf('submitScript%d%s', ii, scriptExt);
+        localSubmitScriptPath = sprintf('%s%s%s', localJobDirectory, fileSeparator, submitScriptName);
+        submitScriptPathOnCluster = sprintf('%s%s%s', jobDirectoryOnCluster, fileSeparator, submitScriptName);
+        quotedSubmitScriptPathOnCluster = sprintf('%s%s%s', quote, submitScriptPathOnCluster, quote);
+        
+        % Path to the environment wrapper, which will set the environment variables
+        % for the job then execute the job wrapper
+        envScriptName = sprintf('environmentWrapper%d%s', ii, scriptExt);
+        localEnvScriptPath = sprintf('%s%s%s', localJobDirectory, fileSeparator, envScriptName);
+        envScriptPathOnCluster = sprintf('%s%s%s', jobDirectoryOnCluster, fileSeparator, envScriptName);
+        quotedEnvScriptPathOnCluster = sprintf('%s%s%s', quote, envScriptPathOnCluster, quote);
+        
+        % Create the scripts to submit a LSF job.
+        % These will be created in the job directory.
+        dctSchedulerMessage(5, '%s: Generating scripts for task %d', currFilename, ii);
+        createEnvironmentWrapper(localEnvScriptPath, quotedWrapperPath, ...
+            environmentVariables, clusterOS);
+        createSubmitScript(localSubmitScriptPath, jobName, quotedLogFile, ...
+            quotedEnvScriptPathOnCluster, additionalSubmitArgs, clusterOS);
+        
+        % Create the command to run on the cluster
+        commandsToRun{ii} = sprintf('%s %s', shellCmd, quotedSubmitScriptPathOnCluster);
     end
 end
 
@@ -332,46 +385,6 @@ end
 useJobArrays = true;
 % Set the maximum array size.
 maxJobArraySize = str2double(tokens{1});
-end
-
-function commandToRun = iGetCommandToRun(localJobDirectory, ...
-    jobDirectoryOnCluster, fileSeparator, quote, jobName, quotedLogFile, ...
-    quotedWrapperPath, environmentVariables, clusterOS, additionalSubmitArgs, jobArrayString)
-if nargin < 11
-    jobArrayString = [];
-end
-
-% Extension to use for scripts
-if strcmpi(clusterOS, 'unix')
-    scriptExt = '.sh';
-else
-    scriptExt = '.bat';
-end
-
-% Path to the submit script, to submit the LSF job using bsub
-localSubmitScriptPath = [tempname(localJobDirectory) scriptExt];
-[~, submitScriptName, submitScriptExt] = fileparts(localSubmitScriptPath);
-submitScriptPathOnCluster = sprintf('%s%s%s%s', jobDirectoryOnCluster, fileSeparator, submitScriptName, submitScriptExt);
-quotedSubmitScriptPathOnCluster = sprintf('%s%s%s', quote, submitScriptPathOnCluster, quote);
-
-% Path to the environment wrapper, which will set the environment variables
-% for the job then execute the job wrapper
-localEnvScriptPath = [tempname(localJobDirectory) scriptExt];
-[~, envScriptName, envScriptExt] = fileparts(localEnvScriptPath);
-envScriptPathOnCluster = sprintf('%s%s%s%s', jobDirectoryOnCluster, fileSeparator, envScriptName, envScriptExt);
-quotedEnvScriptPathOnCluster = sprintf('%s%s%s', quote, envScriptPathOnCluster, quote);
-
-createEnvironmentWrapper(localEnvScriptPath, quotedWrapperPath, ...
-    environmentVariables, clusterOS);
-createSubmitScript(localSubmitScriptPath, jobName, quotedLogFile, ...
-    quotedEnvScriptPathOnCluster, additionalSubmitArgs, clusterOS, jobArrayString);
-
-% Create the command to run on the cluster
-if strcmpi(clusterOS, 'unix')
-    commandToRun = sprintf('sh %s', quotedSubmitScriptPathOnCluster);
-else
-    commandToRun = sprintf('cmd /c %s', quotedSubmitScriptPathOnCluster);
-end
 end
 
 function jobID = iSubmitJobUsingCommand(cluster, job, commandToRun)
