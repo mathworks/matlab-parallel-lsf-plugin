@@ -101,7 +101,7 @@ By modifying the plugins, you can add support for your own custom `AdditionalPro
 To manage work on the cluster, MATLAB calls the LSF command line utilities.
 For example, the `bsub` command to submit work and `bjobs` to query the state of submitted jobs.
 If your MATLAB session is running on a machine with the scheduler utilities available, the plugin scripts can call the utilities on the command line.
-Scheduler utilties are typically available if your MATLAB session is running on the LSF cluster to which you want to submit.
+Scheduler utilities are typically available if your MATLAB session is running on the LSF cluster to which you want to submit.
 
 If MATLAB cannot directly access the scheduler utilities on the command line, the plugin scripts create an SSH session to the cluster and run scheduler commands over that connection.
 To configure your cluster to submit scheduler commands via SSH, set the `ClusterHost` field of `AdditionalProperties` to the name of the cluster node to which MATLAB connects via SSH.

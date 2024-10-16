@@ -4,7 +4,7 @@ function state = getJobStateFcn(cluster, job, state)
 % Set your cluster's PluginScriptsLocation to the parent folder of this
 % function to run it when you query the state of a job.
 
-% Copyright 2010-2022 The MathWorks, Inc.
+% Copyright 2010-2024 The MathWorks, Inc.
 
 % Store the current filename for the errors, warnings and
 % dctSchedulerMessages
@@ -61,18 +61,20 @@ end
 clusterState = iExtractJobState(cmdOut, numSubmittedTasks);
 dctSchedulerMessage(6, '%s: State %s was extracted from cluster output.', currFilename, clusterState);
 
-% If we could determine the cluster's state, we'll use that, otherwise
-% stick with MATLAB's job state.
+% If we could determine the cluster's state, we'll use that. Otherwise, we assume
+% the scheduler is no longer tracking the job because the job has terminated.
 if ~strcmp(clusterState, 'unknown')
     state = clusterState;
+else
+    state = 'finished';
 end
 
 if ~cluster.HasSharedFilesystem
-    % Decide what to do with mirroring based on the cluster's version of job state and whether or not
-    % the job is currently being mirrored:
+    % Decide what to do with mirroring based on the cluster's version of job
+    % state and whether or not the job is currently being mirrored:
     % If job is not being mirrored, and job is not finished, resume the mirror
     % If job is not being mirrored, and job is finished, do the last mirror
-    % If the job is being mirrored, and job is finished, do the last mirror.
+    % If the job is being mirrored, and job is finished, do the last mirror
     % Otherwise (if job is not finished, and we are mirroring), do nothing
     remoteConnection = getRemoteConnection(cluster);
     isBeingMirrored = remoteConnection.isJobUsingConnection(job.ID);
