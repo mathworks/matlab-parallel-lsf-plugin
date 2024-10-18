@@ -31,10 +31,6 @@ else
     % Turn off command echoing
     fprintf(fid, '@echo off\n');
     
-    % On Windows must specify the list of variables to forward via mpiexec
-    genvlist = strjoin(environmentVariables(:,1), ',');
-    environmentVariables = [environmentVariables; {'PARALLEL_SERVER_GENVLIST', genvlist}];
-    
     formatSpec = 'set %s=%s\n';
 end
 

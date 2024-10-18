@@ -2,7 +2,7 @@ function createSubmitScript(outputFilename, jobName, quotedLogFile, ...
     quotedWrapperPath, additionalSubmitArgs, clusterOS, jobArrayString)
 % Create a script that runs the LSF bsub command.
 
-% Copyright 2010-2023 The MathWorks, Inc.
+% Copyright 2010-2024 The MathWorks, Inc.
 
 if nargin < 7
     jobArrayString = [];
