@@ -19,7 +19,7 @@
 # The following environment variables are set by LSF:
 # LSB_MCPU_HOSTS - list of hostnames with their associated number of processors allocated to this LSF job
 
-# Copyright 2006-2024 The MathWorks, Inc.
+# Copyright 2006-2025 The MathWorks, Inc.
 
 # If PARALLEL_SERVER_ environment variables are not set, assign any
 # available values with form MDCE_ for backwards compatibility
@@ -46,10 +46,17 @@ if [ ! -z "${PARALLEL_SERVER_DEBUG}" ] && [ "${PARALLEL_SERVER_DEBUG}" != "false
     MPI_VERBOSE="${MPI_VERBOSE} -v -print-all-exitcodes"
 fi
 
+if [ ! -z "${PARALLEL_SERVER_BIND_TO_CORE}" ] && [ "${PARALLEL_SERVER_BIND_TO_CORE}" != "false" ] ; then
+    BIND_TO_CORE_ARG="-bind-to core:${PARALLEL_SERVER_NUM_THREADS}"
+else
+    BIND_TO_CORE_ARG=""
+fi
+
 # Construct the command to run.
 CMD="\"${FULL_MPIEXEC}\" \
+    ${PARALLEL_SERVER_MPIEXEC_ARG} \
     -genvlist ${PARALLEL_SERVER_GENVLIST} \
-    -bind-to core:${PARALLEL_SERVER_NUM_THREADS} \
+    ${BIND_TO_CORE_ARG} \
     ${MPI_VERBOSE} \
     -n ${PARALLEL_SERVER_TOTAL_TASKS} \
     \"${PARALLEL_SERVER_MATLAB_EXE}\" \
